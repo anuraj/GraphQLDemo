@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDbContext<BookmarkDbContext>(options =>
+builder.Services.AddDbContextFactory<BookmarkDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("BookmarkDbConnection")));
 builder.Services.AddGraphQLServer().AddQueryType<Query>().AddProjections().AddFiltering().AddSorting();
 var app = builder.Build();
@@ -88,9 +88,10 @@ public class BookmarkDbContext : DbContext
 
 public class Query
 {
+    [UseDbContext(typeof(BookmarkDbContext))]
     [UseProjection]
     [UseFiltering]
     [UseSorting]
-    public IQueryable<Link> Links([Service] BookmarkDbContext bookmarkDbContext)
+    public IQueryable<Link> Links([ScopedService] BookmarkDbContext bookmarkDbContext)
             => bookmarkDbContext.Links;
 }
