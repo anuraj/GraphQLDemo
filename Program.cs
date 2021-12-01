@@ -1,15 +1,27 @@
+using HotChocolate.Subscriptions;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContextFactory<BookmarkDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("BookmarkDbConnection")));
+
 builder.Services.AddGraphQLServer()
     .AddQueryType<Query>()
     .AddProjections()
     .AddFiltering()
     .AddSorting()
-    .AddMutationType<Mutation>();
+    .AddMutationType<Mutation>()
+    .AddSubscriptionType<Subscription>()
+    .AddInMemorySubscriptions();
+
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+
+app.UseWebSockets();
 
 app.MapGet("/", () => "Hello World!");
 app.UseRouting();
@@ -105,7 +117,7 @@ public class Mutation
 {
     [UseDbContext(typeof(BookmarkDbContext))]
     public async Task<LinkOutput> AddLink(LinkInput linkInput,
-        [ScopedService] BookmarkDbContext bookmarkDbContext)
+    [ScopedService] BookmarkDbContext bookmarkDbContext, [Service] ITopicEventSender sender)
     {
         if (string.IsNullOrEmpty(linkInput.Url))
         {
@@ -122,6 +134,7 @@ public class Mutation
         };
         bookmarkDbContext.Links.Add(link);
         await bookmarkDbContext.SaveChangesAsync();
+        await sender.SendAsync(nameof(Subscription.OnCreateLink), link);
         return new LinkOutput(true, "Link created successfully", link.Id, link.Url,
             link.Title, link.Description, link.ImageUrl, link.CreatedOn);
     }
@@ -170,6 +183,10 @@ public class Mutation
         return new LinkOutput(false, "Link not found.", null, null, null, null, null, null);
     }
 }
-
+public class Subscription
+{
+    [Subscribe]
+    public Link OnCreateLink([EventMessage] Link link) => link;
+}
 public record LinkInput(string Url = "", string Title = "", string Description = "", string ImageUrl = "");
 public record LinkOutput(bool IsSuccess, string Message, int? Id, string? Url, string? Title, string? Description, string? ImageUrl, DateTime? CreatedOn);
